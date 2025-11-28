@@ -1,19 +1,7 @@
 import type { ShiftAssignment, Staff, MonthlySettings } from '../types';
-import { SHIFT_CODES, NIGHT_PATTERNS } from '../constants/shifts';
-import { validateShift, checkConsecutiveWork } from './shiftLogic';
+import { SHIFT_CODES } from '../constants/shifts';
+import { validateShift } from './shiftLogic';
 import { getDaysInMonth, format, startOfMonth, addDays, subDays } from 'date-fns';
-
-/**
- * 候補者をシャッフルする
- */
-const shuffle = <T>(array: T[]): T[] => {
-    const newArray = [...array];
-    for (let i = newArray.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [newArray[i], newArray[j]] = [newArray[j], newArray[i]];
-    }
-    return newArray;
-};
 
 /**
  * スタッフの夜勤回数をカウントする
@@ -61,18 +49,7 @@ const getPreviousShiftCode = (
     return prevAssignment?.shiftCode || null;
 };
 
-/**
- * 前日が休みだったか確認
- */
-const hadOffYesterday = (
-    assignments: ShiftAssignment[],
-    prevMonthData: ShiftAssignment[],
-    date: string,
-    staffId: string
-): boolean => {
-    const prevShift = getPreviousShiftCode(assignments, prevMonthData, date, staffId);
-    return prevShift ? ['公', '年', '産', '育'].includes(prevShift) : false;
-};
+
 
 /**
  * 直近の連続勤務日数を計算（休みが来るまで遡る）
@@ -126,7 +103,8 @@ const scoreCandidate = (
     targetShiftCode: string,
     date: string,
     assignments: ShiftAssignment[],
-    prevMonthData: ShiftAssignment[]
+    prevMonthData: ShiftAssignment[],
+    nightShiftPattern: 'patternA' | 'patternB' = 'patternA'
 ): number => {
     let score = 0;
 
@@ -136,6 +114,7 @@ const scoreCandidate = (
 
     // 2. 前日のシフトとの相性
     const prevShift = getPreviousShiftCode(assignments, prevMonthData, date, staff.id);
+    const prevPrevShift = getPreviousShiftCode(assignments, prevMonthData, format(addDays(new Date(date), -1), 'yyyy-MM-dd'), staff.id);
     const prevLoad = prevShift ? getShiftLoad(prevShift) : 0;
     const currentLoad = getShiftLoad(targetShiftCode);
 
@@ -151,13 +130,39 @@ const scoreCandidate = (
 
     // 3. 同じシフトの連続を避ける
     if (prevShift === targetShiftCode) {
-        score += 8; // 同じシフトの連続は避ける
+        // 夜勤の連続はパターンによって評価が異なるためここでは除外
+        if (!SHIFT_CODES[targetShiftCode]?.isNightShift) {
+            score += 8;
+        }
     }
 
     // 4. 夜勤の場合は夜勤回数も考慮
     if (SHIFT_CODES[targetShiftCode]?.isNightShift) {
         const nightCount = countNightShifts(assignments, staff.id);
         score += nightCount * 5;
+
+        // 夜勤連続の判定
+        if (prevShift === 'N1') {
+            if (nightShiftPattern === 'patternA') {
+                score += 2000; // パターンA: 連続夜勤を強く避ける
+            } else {
+                // パターンB: 2連夜勤を推奨
+                if (prevPrevShift === 'N1') {
+                    score += 2000; // 3連夜勤は避ける
+                } else {
+                    score -= 500; // 2連夜勤は推奨
+                }
+            }
+        }
+    }
+
+    // 5. 夜勤明けの翌日 (N1 -> 公 -> [公])
+    // パターンA: N1 -> 公 -> 公 (推奨)
+    // パターンB: N1 -> N1 -> 公 -> 公 (推奨)
+    if (prevPrevShift === 'N1' && prevShift === '公') {
+        if (targetShiftCode === '公') {
+            score -= 50; // 2連休を推奨
+        }
     }
 
     // ランダム要素を追加（完全に決定的にならないように）
@@ -173,13 +178,14 @@ export const generateMonthlyShift = (
     year: number,
     month: number,
     staffList: Staff[],
-    settings: MonthlySettings,
+    _settings: MonthlySettings,
     prevMonthData: ShiftAssignment[],
     committeeAssignments: Array<{ date: string; staffId: string }> = [],
     maxRetries: number = 100
 ): ShiftAssignment[] => {
     const startDate = startOfMonth(new Date(year, month - 1));
     const daysInMonth = getDaysInMonth(startDate);
+    const nightShiftPattern = _settings.nightShiftPattern || 'patternA';
 
     for (let attempt = 0; attempt < maxRetries; attempt++) {
         try {
@@ -220,15 +226,15 @@ export const generateMonthlyShift = (
                 const requiredNight = 1;
 
                 for (let i = 0; i < requiredNight; i++) {
-                    let candidates = staffList.filter(staff => {
+                    const candidates = staffList.filter(staff => {
                         const key = `${dateStr}:${staff.id}`;
                         return !assignedMap.has(key) && staff.attributes.canNightShift;
                     });
 
                     // スコアリングでソート
                     candidates.sort((a, b) => {
-                        const scoreA = scoreCandidate(a, 'N1', dateStr, currentAssignments, prevMonthData);
-                        const scoreB = scoreCandidate(b, 'N1', dateStr, currentAssignments, prevMonthData);
+                        const scoreA = scoreCandidate(a, 'N1', dateStr, currentAssignments, prevMonthData, nightShiftPattern);
+                        const scoreB = scoreCandidate(b, 'N1', dateStr, currentAssignments, prevMonthData, nightShiftPattern);
                         return scoreA - scoreB;
                     });
 
@@ -245,21 +251,50 @@ export const generateMonthlyShift = (
                             currentAssignments.push(assignment);
                             assignedMap.add(`${dateStr}:${staff.id}`);
 
-                            // Recovery Days
-                            const nextDay1 = addDays(currentDate, 1);
-                            if (nextDay1.getMonth() === currentDate.getMonth()) {
-                                const nextDate1 = format(nextDay1, 'yyyy-MM-dd');
-                                const off1: ShiftAssignment = { date: nextDate1, staffId: staff.id, shiftCode: '公' };
-                                currentAssignments.push(off1);
-                                assignedMap.add(`${nextDate1}:${staff.id}`);
-                            }
+                            // Recovery Days Logic based on Pattern
+                            if (nightShiftPattern === 'patternA') {
+                                // Pattern A: N1 -> Off -> Off
+                                const nextDay1 = addDays(currentDate, 1);
+                                if (nextDay1.getMonth() === currentDate.getMonth()) {
+                                    const nextDate1 = format(nextDay1, 'yyyy-MM-dd');
+                                    const off1: ShiftAssignment = { date: nextDate1, staffId: staff.id, shiftCode: '公' };
+                                    currentAssignments.push(off1);
+                                    assignedMap.add(`${nextDate1}:${staff.id}`);
+                                }
 
-                            const nextDay2 = addDays(currentDate, 2);
-                            if (nextDay2.getMonth() === currentDate.getMonth()) {
-                                const nextDate2 = format(nextDay2, 'yyyy-MM-dd');
-                                const off2: ShiftAssignment = { date: nextDate2, staffId: staff.id, shiftCode: '公' };
-                                currentAssignments.push(off2);
-                                assignedMap.add(`${nextDate2}:${staff.id}`);
+                                const nextDay2 = addDays(currentDate, 2);
+                                if (nextDay2.getMonth() === currentDate.getMonth()) {
+                                    const nextDate2 = format(nextDay2, 'yyyy-MM-dd');
+                                    const off2: ShiftAssignment = { date: nextDate2, staffId: staff.id, shiftCode: '公' };
+                                    currentAssignments.push(off2);
+                                    assignedMap.add(`${nextDate2}:${staff.id}`);
+                                }
+                            } else {
+                                // Pattern B: N1 -> N1 -> Off -> Off
+                                // Here we only ensure the NEXT day is NOT Off if we want consecutive N1.
+                                // But actually, if we assign N1 today, we don't force Off tomorrow if we want N1 tomorrow.
+                                // However, if this is the SECOND N1, we must force Off.
+
+                                const prevShift = getPreviousShiftCode(currentAssignments, prevMonthData, dateStr, staff.id);
+                                if (prevShift === 'N1') {
+                                    // This is the 2nd N1. Force 2 days off.
+                                    const nextDay1 = addDays(currentDate, 1);
+                                    if (nextDay1.getMonth() === currentDate.getMonth()) {
+                                        const nextDate1 = format(nextDay1, 'yyyy-MM-dd');
+                                        const off1: ShiftAssignment = { date: nextDate1, staffId: staff.id, shiftCode: '公' };
+                                        currentAssignments.push(off1);
+                                        assignedMap.add(`${nextDate1}:${staff.id}`);
+                                    }
+
+                                    const nextDay2 = addDays(currentDate, 2);
+                                    if (nextDay2.getMonth() === currentDate.getMonth()) {
+                                        const nextDate2 = format(nextDay2, 'yyyy-MM-dd');
+                                        const off2: ShiftAssignment = { date: nextDate2, staffId: staff.id, shiftCode: '公' };
+                                        currentAssignments.push(off2);
+                                        assignedMap.add(`${nextDate2}:${staff.id}`);
+                                    }
+                                }
+                                // If it's the 1st N1, we do nothing and hope the next day picks N1 (due to score incentive).
                             }
 
                             assigned = true;
@@ -283,14 +318,14 @@ export const generateMonthlyShift = (
                 const requiredB5 = 1;
 
                 for (let i = 0; i < requiredB5; i++) {
-                    let candidates = staffList.filter(staff => {
+                    const candidates = staffList.filter(staff => {
                         const key = `${dateStr}:${staff.id}`;
                         return !assignedMap.has(key);
                     });
 
                     candidates.sort((a, b) => {
-                        const scoreA = scoreCandidate(a, 'B5', dateStr, currentAssignments, prevMonthData);
-                        const scoreB = scoreCandidate(b, 'B5', dateStr, currentAssignments, prevMonthData);
+                        const scoreA = scoreCandidate(a, 'B5', dateStr, currentAssignments, prevMonthData, nightShiftPattern);
+                        const scoreB = scoreCandidate(b, 'B5', dateStr, currentAssignments, prevMonthData, nightShiftPattern);
                         return scoreA - scoreB;
                     });
 
@@ -327,14 +362,14 @@ export const generateMonthlyShift = (
                 const requiredB3 = 1;
 
                 for (let i = 0; i < requiredB3; i++) {
-                    let candidates = staffList.filter(staff => {
+                    const candidates = staffList.filter(staff => {
                         const key = `${dateStr}:${staff.id}`;
                         return !assignedMap.has(key);
                     });
 
                     candidates.sort((a, b) => {
-                        const scoreA = scoreCandidate(a, 'B3', dateStr, currentAssignments, prevMonthData);
-                        const scoreB = scoreCandidate(b, 'B3', dateStr, currentAssignments, prevMonthData);
+                        const scoreA = scoreCandidate(a, 'B3', dateStr, currentAssignments, prevMonthData, nightShiftPattern);
+                        const scoreB = scoreCandidate(b, 'B3', dateStr, currentAssignments, prevMonthData, nightShiftPattern);
                         return scoreA - scoreB;
                     });
 
@@ -371,7 +406,7 @@ export const generateMonthlyShift = (
                 const requiredA2 = 2;
 
                 for (let i = 0; i < requiredA2; i++) {
-                    let candidates = staffList.filter(staff => {
+                    const candidates = staffList.filter(staff => {
                         const key = `${dateStr}:${staff.id}`;
                         if (assignedMap.has(key)) return false;
 
@@ -384,8 +419,8 @@ export const generateMonthlyShift = (
                     });
 
                     candidates.sort((a, b) => {
-                        const scoreA = scoreCandidate(a, 'A2', dateStr, currentAssignments, prevMonthData);
-                        const scoreB = scoreCandidate(b, 'A2', dateStr, currentAssignments, prevMonthData);
+                        const scoreA = scoreCandidate(a, 'A2', dateStr, currentAssignments, prevMonthData, nightShiftPattern);
+                        const scoreB = scoreCandidate(b, 'A2', dateStr, currentAssignments, prevMonthData, nightShiftPattern);
                         return scoreA - scoreB;
                     });
 
@@ -431,7 +466,7 @@ export const generateMonthlyShift = (
 
             return currentAssignments;
 
-        } catch (e) {
+        } catch {
             // リトライ
             continue;
         }

@@ -1,6 +1,6 @@
-import type { ShiftAssignment, Staff } from '../types';
+import type { ShiftAssignment } from '../types';
 import { SHIFT_CODES, CONSTRAINT_RULES } from '../constants/shifts';
-import { differenceInDays, parseISO, addDays, format } from 'date-fns';
+import { parseISO, addDays, format } from 'date-fns';
 
 /**
  * 連続勤務日数をチェックする

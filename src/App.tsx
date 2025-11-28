@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { ChevronLeft, ChevronRight, Users, Settings, Calendar } from 'lucide-react';
 import { Toaster, toast } from 'react-hot-toast';
 import type { Staff, ShiftAssignment, MonthlySettings } from './types';
@@ -7,7 +7,7 @@ import { SettingsPanel } from './components/SettingsPanel';
 import { ShiftTable } from './components/ShiftTable';
 import { AlertPanel, type Alert } from './components/AlertPanel';
 import { generateMonthlyShift } from './lib/autoGenerator';
-import { validateShift } from './lib/shiftLogic';
+
 import { format, getDaysInMonth, startOfMonth, addDays } from 'date-fns';
 
 type TabType = 'shift' | 'staff' | 'settings';
@@ -26,6 +26,7 @@ function App() {
     B5: 1,
     N1: 1,
   });
+  const [nightShiftPattern, setNightShiftPattern] = useState<'patternA' | 'patternB'>('patternA');
   const [shifts, setShifts] = useState<ShiftAssignment[]>([]);
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -34,6 +35,7 @@ function App() {
   useEffect(() => {
     const savedStaff = localStorage.getItem('staff-list');
     const savedCounts = localStorage.getItem('required-counts');
+    const savedPattern = localStorage.getItem('night-shift-pattern');
     const savedShifts = localStorage.getItem('shifts-data');
 
     if (savedStaff) {
@@ -50,6 +52,10 @@ function App() {
       } catch (e) {
         console.error('Failed to load required counts', e);
       }
+    }
+
+    if (savedPattern) {
+      setNightShiftPattern(savedPattern as 'patternA' | 'patternB');
     }
 
     if (savedShifts) {
@@ -71,13 +77,11 @@ function App() {
   }, [requiredCounts]);
 
   useEffect(() => {
-    localStorage.setItem('shifts-data', JSON.stringify(shifts));
-    // シフト更新時にバリデーション
-    validateShifts();
-  }, [shifts]);
+    localStorage.setItem('night-shift-pattern', nightShiftPattern);
+  }, [nightShiftPattern]);
 
   // バリデーション
-  const validateShifts = () => {
+  const validateShifts = useCallback(() => {
     const newAlerts: Alert[] = [];
     const daysInMonth = getDaysInMonth(new Date(currentMonth.year, currentMonth.month - 1));
 
@@ -151,7 +155,13 @@ function App() {
     });
 
     setAlerts(newAlerts);
-  };
+  }, [currentMonth, shifts, staffList, requiredCounts]);
+
+  useEffect(() => {
+    localStorage.setItem('shifts-data', JSON.stringify(shifts));
+    // シフト更新時にバリデーション
+    validateShifts();
+  }, [shifts, validateShifts]);
 
   // 月変更
   const handlePrevMonth = () => {
@@ -210,6 +220,7 @@ function App() {
         month: currentMonth.month,
         requiredStaffCounts,
         holidayCount: 9,
+        nightShiftPattern,
       };
 
       // 前月データ（簡易版、実際は前月のシフトを参照）
@@ -243,7 +254,7 @@ function App() {
 
       {/* Header */}
       <header className="bg-white border-b border-gray-200 shadow-sm">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+        <div className={`${activeTab === 'shift' ? 'w-full px-4' : 'max-w-7xl mx-auto px-4 sm:px-6 lg:px-8'} py-4`}>
           <div className="flex justify-between items-center">
             <h1 className="text-2xl md:text-3xl font-bold text-gray-900">
               特養シフト管理システム
@@ -270,14 +281,14 @@ function App() {
       </header>
 
       {/* Tabs */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-6">
+      <div className={`${activeTab === 'shift' ? 'w-full px-4' : 'max-w-7xl mx-auto px-4 sm:px-6 lg:px-8'} mt-6`}>
         <div className="border-b border-gray-200">
           <nav className="-mb-px flex space-x-8">
             <button
               onClick={() => setActiveTab('shift')}
               className={`flex items-center gap-2 py-4 px-1 border-b-2 font-medium text-sm transition-colors ${activeTab === 'shift'
-                  ? 'border-blue-500 text-blue-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                ? 'border-blue-500 text-blue-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                 }`}
             >
               <Calendar size={20} />
@@ -286,8 +297,8 @@ function App() {
             <button
               onClick={() => setActiveTab('staff')}
               className={`flex items-center gap-2 py-4 px-1 border-b-2 font-medium text-sm transition-colors ${activeTab === 'staff'
-                  ? 'border-blue-500 text-blue-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                ? 'border-blue-500 text-blue-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                 }`}
             >
               <Users size={20} />
@@ -296,8 +307,8 @@ function App() {
             <button
               onClick={() => setActiveTab('settings')}
               className={`flex items-center gap-2 py-4 px-1 border-b-2 font-medium text-sm transition-colors ${activeTab === 'settings'
-                  ? 'border-blue-500 text-blue-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                ? 'border-blue-500 text-blue-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                 }`}
             >
               <Settings size={20} />
@@ -308,7 +319,7 @@ function App() {
       </div>
 
       {/* Content */}
-      <div className={`max-w-7xl mx-auto ${alerts.length > 0 ? 'pb-[350px]' : 'pb-8'}`}>
+      <div className={`${activeTab === 'shift' ? 'w-full px-4' : 'max-w-7xl mx-auto px-4 sm:px-6 lg:px-8'} ${alerts.length > 0 ? 'pb-[350px]' : 'pb-8'}`}>
         {activeTab === 'shift' && (
           <ShiftTable
             year={currentMonth.year}
@@ -324,7 +335,15 @@ function App() {
           <StaffManagement staffList={staffList} onUpdate={setStaffList} />
         )}
         {activeTab === 'settings' && (
-          <SettingsPanel defaultCounts={requiredCounts} onUpdate={setRequiredCounts} />
+          <SettingsPanel
+            defaultCounts={requiredCounts}
+            defaultPattern={nightShiftPattern}
+            onUpdate={(counts, pattern) => {
+              setRequiredCounts(counts);
+              setNightShiftPattern(pattern);
+              toast.success('設定を保存しました');
+            }}
+          />
         )}
       </div>
 

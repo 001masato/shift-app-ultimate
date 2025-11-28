@@ -40,4 +40,5 @@ export interface MonthlySettings {
         };
     };
     holidayCount: number;
+    nightShiftPattern?: 'patternA' | 'patternB'; // patternA: N1->公->公 (単発), patternB: N1->N1->公->公 (2連)
 }

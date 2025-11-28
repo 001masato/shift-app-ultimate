@@ -32,6 +32,11 @@ export const SHIFT_CODES: Record<string, ShiftCode> = {
     'P1': { code: 'P1', name: 'パート', type: 'その他', startTime: '09:00', endTime: '16:00' },
     'P7': { code: 'P7', name: 'パート', type: 'その他', startTime: '13:00', endTime: '17:00' },
     'P8': { code: 'P8', name: 'パート', type: 'その他', startTime: '09:00', endTime: '16:30' },
+
+    // その他
+    '委': { code: '委', name: '委員会', type: 'その他', startTime: '13:00', endTime: '14:00' },
+    '研': { code: '研', name: '研修', type: 'その他', startTime: '10:00', endTime: '16:00' },
+    '希': { code: '希', name: '希望休', type: '休日', startTime: '', endTime: '', isOff: true },
 };
 
 export const CONSTRAINT_RULES = {

@@ -8,11 +8,13 @@ interface SettingsPanelProps {
         B5: number; // 遅番5
         N1: number; // 夜勤
     };
-    onUpdate: (counts: { A2: number; B3: number; B5: number; N1: number }) => void;
+    defaultPattern?: 'patternA' | 'patternB';
+    onUpdate: (counts: { A2: number; B3: number; B5: number; N1: number }, pattern: 'patternA' | 'patternB') => void;
 }
 
-export const SettingsPanel: React.FC<SettingsPanelProps> = ({ defaultCounts, onUpdate }) => {
+export const SettingsPanel: React.FC<SettingsPanelProps> = ({ defaultCounts, defaultPattern = 'patternA', onUpdate }) => {
     const [counts, setCounts] = useState(defaultCounts);
+    const [pattern, setPattern] = useState<'patternA' | 'patternB'>(defaultPattern);
     const [hasChanges, setHasChanges] = useState(false);
 
     const handleChange = (key: keyof typeof counts, value: number) => {
@@ -20,13 +22,19 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ defaultCounts, onU
         setHasChanges(true);
     };
 
+    const handlePatternChange = (newPattern: 'patternA' | 'patternB') => {
+        setPattern(newPattern);
+        setHasChanges(true);
+    };
+
     const handleSave = () => {
-        onUpdate(counts);
+        onUpdate(counts, pattern);
         setHasChanges(false);
     };
 
     const handleReset = () => {
         setCounts(defaultCounts);
+        setPattern(defaultPattern);
         setHasChanges(false);
     };
 
@@ -54,7 +62,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ defaultCounts, onU
                 )}
             </div>
 
-            <div className="bg-white rounded-lg shadow p-6">
+            <div className="bg-white rounded-lg shadow p-6 mb-6">
                 <div className="mb-6">
                     <h3 className="text-lg font-semibold text-gray-800 mb-2">勤務体系・必須人数設定</h3>
                     <p className="text-sm text-gray-600">
@@ -169,16 +177,59 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ defaultCounts, onU
                         </p>
                     </div>
                 </div>
+            </div>
 
-                <div className="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-                    <h4 className="font-semibold text-blue-900 mb-2">設定のポイント</h4>
-                    <ul className="text-sm text-blue-800 space-y-1">
-                        <li>• A2（早番）は委員会の代替シフトとしても使用されます</li>
-                        <li>• B5（遅番5）の翌日は早番（A2/A3）には配置できません（インターバル制限）</li>
-                        <li>• N1（夜勤）の翌日と翌々日は自動的に公休となります</li>
-                        <li>• 合計 = A2 + B3 + B5 + N1 がスタッフ数を超えないように設定してください</li>
-                    </ul>
+            <div className="bg-white rounded-lg shadow p-6 mb-6">
+                <h3 className="text-lg font-semibold text-gray-800 mb-4">夜勤ルール設定</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div
+                        className={`p-4 border-2 rounded-lg cursor-pointer transition-all ${pattern === 'patternA' ? 'border-purple-500 bg-purple-50' : 'border-gray-200 hover:border-purple-200'}`}
+                        onClick={() => handlePatternChange('patternA')}
+                    >
+                        <div className="flex items-center justify-between mb-2">
+                            <h4 className="font-semibold text-purple-900">パターンA (単発夜勤)</h4>
+                            {pattern === 'patternA' && <div className="w-4 h-4 bg-purple-500 rounded-full"></div>}
+                        </div>
+                        <ul className="space-y-2 text-sm text-purple-800">
+                            <li className="flex items-center gap-2">
+                                <span className="w-6 h-6 flex items-center justify-center bg-purple-200 rounded text-xs font-bold">A</span>
+                                <span>N1 → 公 → 公 (推奨)</span>
+                            </li>
+                            <li className="text-xs text-gray-500 mt-2">
+                                夜勤の連続を避け、単発での勤務を優先します。
+                            </li>
+                        </ul>
+                    </div>
+
+                    <div
+                        className={`p-4 border-2 rounded-lg cursor-pointer transition-all ${pattern === 'patternB' ? 'border-purple-500 bg-purple-50' : 'border-gray-200 hover:border-purple-200'}`}
+                        onClick={() => handlePatternChange('patternB')}
+                    >
+                        <div className="flex items-center justify-between mb-2">
+                            <h4 className="font-semibold text-purple-900">パターンB (2連夜勤)</h4>
+                            {pattern === 'patternB' && <div className="w-4 h-4 bg-purple-500 rounded-full"></div>}
+                        </div>
+                        <ul className="space-y-2 text-sm text-purple-800">
+                            <li className="flex items-center gap-2">
+                                <span className="w-6 h-6 flex items-center justify-center bg-purple-200 rounded text-xs font-bold">B</span>
+                                <span>N1 → N1 → 公 → 公 (推奨)</span>
+                            </li>
+                            <li className="text-xs text-gray-500 mt-2">
+                                夜勤を2回連続で行うことを優先します。
+                            </li>
+                        </ul>
+                    </div>
                 </div>
+            </div>
+
+            <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                <h4 className="font-semibold text-blue-900 mb-2">設定のポイント</h4>
+                <ul className="text-sm text-blue-800 space-y-1">
+                    <li>• A2（早番）は委員会の代替シフトとしても使用されます</li>
+                    <li>• B5（遅番5）の翌日は早番（A2/A3）には配置できません（インターバル制限）</li>
+                    <li>• N1（夜勤）の翌日と翌々日は自動的に公休となります</li>
+                    <li>• 合計 = A2 + B3 + B5 + N1 がスタッフ数を超えないように設定してください</li>
+                </ul>
             </div>
         </div>
     );

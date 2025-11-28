@@ -12,7 +12,7 @@ export const StaffManagement: React.FC<StaffManagementProps> = ({ staffList, onU
     const [editingStaff, setEditingStaff] = useState<Staff | null>(null);
     const [formData, setFormData] = useState({
         name: '',
-        employmentType: 'full_time' as 'full_time' | 'part_time',
+        employmentType: 'full_time' as Staff['employmentType'],
         canNightShift: false,
         canLeader: false,
     });
@@ -138,7 +138,8 @@ export const StaffManagement: React.FC<StaffManagementProps> = ({ staffList, onU
                                         {staff.name}
                                     </td>
                                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                                        {staff.employmentType === 'full_time' ? '常勤' : 'パート'}
+                                        {staff.employmentType === 'full_time' ? '常勤' :
+                                            staff.employmentType === 'short_time' ? '時短' : 'パート'}
                                     </td>
                                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                                         {staff.attributes.canNightShift ? (
@@ -208,10 +209,11 @@ export const StaffManagement: React.FC<StaffManagementProps> = ({ staffList, onU
                                 </label>
                                 <select
                                     value={formData.employmentType}
-                                    onChange={(e) => setFormData({ ...formData, employmentType: e.target.value as 'full_time' | 'part_time' })}
+                                    onChange={(e) => setFormData({ ...formData, employmentType: e.target.value as Staff['employmentType'] })}
                                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                                 >
                                     <option value="full_time">常勤</option>
+                                    <option value="short_time">時短</option>
                                     <option value="part_time">パート</option>
                                 </select>
                             </div>
