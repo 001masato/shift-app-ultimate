@@ -232,7 +232,8 @@ function App() {
         currentMonth.month,
         staffList,
         settings,
-        prevMonthData
+        prevMonthData,
+        shifts
       );
 
       setShifts(generated);

@@ -22,6 +22,8 @@ export interface Staff {
     contract: {
         maxDaysPerMonth?: number;
         fixedDays?: number[]; // 0=Sun, 1=Mon...
+        allowedShifts?: string[]; //許可するシフトコード（時短・パート用）
+        weekendOff?: boolean; // 土日祝日休み（時短用）
     };
 }
 

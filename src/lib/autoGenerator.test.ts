@@ -45,7 +45,7 @@ describe('Auto Generator v1.3 (Interval & Committee Logic)', () => {
         const committeeAssignments: Array<{ date: string; staffId: string }> = [];
 
         // Run generation
-        const result = generateMonthlyShift(year, month, staffList, settings, prevMonthData, committeeAssignments);
+        const result = generateMonthlyShift(year, month, staffList, settings, prevMonthData, [], committeeAssignments);
 
         // 1. 全割り当て数の確認
         expect(result.length).toBe(staffList.length * daysInMonth);
@@ -101,7 +101,7 @@ describe('Auto Generator v1.3 (Interval & Committee Logic)', () => {
             { date: committeeDate, staffId: 's5' }
         ];
 
-        const result = generateMonthlyShift(year, month, staffList, settings, prevMonthData, committeeAssignments);
+        const result = generateMonthlyShift(year, month, staffList, settings, prevMonthData, [], committeeAssignments);
 
         // s5の委員会日のシフトがD3またはA2であることを確認
         const s5Committee = result.find(a => a.staffId === 's5' && a.date === committeeDate);
